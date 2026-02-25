@@ -218,6 +218,12 @@ end
 ---@param chat table
 ---@return string
 local function get_adapter(chat)
+    log:trace(
+        "get_adapter: chat.adapter.name=%s, has_acp_connection=%s, connection_adapter_name=%s",
+        chat.adapter and chat.adapter.name or "nil",
+        chat.acp_connection and "yes" or "no",
+        chat.acp_connection and chat.acp_connection.adapter and chat.acp_connection.adapter.name or "nil"
+    )
     -- acp adapters
     if chat.acp_connection and chat.acp_connection.adapter and chat.acp_connection.adapter.name then
         return chat.acp_connection.adapter.name
