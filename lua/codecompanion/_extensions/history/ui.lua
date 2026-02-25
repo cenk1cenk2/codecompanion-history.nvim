@@ -587,6 +587,7 @@ function UI:create_chat(chat_data)
             settings = settings,
             adapter = adapter --[[@as CodeCompanion.Adapter]],
             title = title,
+            acp_session_id = chat_data.acp_session_id,
             --INFO: No need to ignore system prompt here, thanks to oli we don't add system messages with same tag (`from_config`) twice.
             -- This also fixes `gx` removing the system prompt from the chat if we pass `ignore_system_prompt = true`
             -- ignore_system_prompt = true,
@@ -607,7 +608,36 @@ function UI:create_chat(chat_data)
         chat.tool_registry.in_use = chat_data.in_use or {}
         chat.cycle = chat_data.cycle or 1
         chat.opts.title_refresh_count = chat_data.title_refresh_count or 0
+        -- Restore ACP session connection before the scheduled ensure_connection runs.
+        -- Chat.new() schedules ensure_connection via vim.schedule for ACP adapters,
+        -- which checks `if not self.chat.acp_connection` before creating a new one.
+        -- By setting up the connection here with the saved session_id, the scheduled
+        -- call becomes a no-op and the existing session is restored.
+        if chat_data.acp_session_id then
+            log:trace("Restoring ACP session: %s", chat_data.acp_session_id)
+            local acp_ok, ACP = pcall(require, "codecompanion.acp")
+            if acp_ok then
+                chat.acp_connection = ACP.new({
+                    adapter = chat.adapter,
+                    session_id = chat_data.acp_session_id,
+                })
+
+                local connected = chat.acp_connection:connect_and_initialize()
+                if connected and chat.acp_connection.session_id then
+                    local cmd_ok, acp_commands = pcall(require, "codecompanion.interactions.chat.acp.commands")
+                    if cmd_ok then
+                        acp_commands.link_buffer_to_session(chat.bufnr, chat.acp_connection.session_id)
+                    end
+                    chat:update_metadata()
+                else
+                    log:warn("Failed to restore ACP session, a new session will be created")
+                    chat.acp_connection = nil
+                end
+            end
+        end
+
         log:trace("Successfully created chat with save_id: %s", save_id or "N/A")
+
         return chat
     end
     local adapter = chat_data.adapter

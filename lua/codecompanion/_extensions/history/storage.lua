@@ -288,7 +288,12 @@ function Storage:save_chat(chat)
         title_refresh_count = chat.opts.title_refresh_count or 0,
         cwd = cwd,
         project_root = utils.find_project_root(cwd),
+        acp_session_id = chat.acp_connection and chat.acp_connection.session_id or nil,
     }
+
+    if chat_data.acp_session_id then
+        log:trace("Captured ACP session_id: %s", chat_data.acp_session_id)
+    end
 
     -- Save chat to file
     local save_result = self:_save_chat_to_file(utils.remove_functions(chat_data))
