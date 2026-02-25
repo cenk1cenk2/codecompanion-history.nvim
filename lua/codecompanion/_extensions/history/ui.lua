@@ -649,6 +649,7 @@ function UI:create_chat(chat_data)
                 if current == saved_model then
                     return
                 end
+
                 if chat.acp_connection.set_model and chat.acp_connection:set_model(saved_model) then
                     log:trace("Restored ACP model: %s", saved_model)
                     chat:update_metadata()

@@ -212,6 +212,24 @@ function Storage:load_chat(id)
     return result.data --[[@as CodeCompanion.History.ChatData]]
 end
 
+---Get the current adapter name from the chat.
+---For ACP adapters, the connection's adapter is the most reliable source
+---since it reflects the actual adapter used after switching providers.
+---@param chat table
+---@return string
+local function get_adapter(chat)
+    -- acp adapters
+    if chat.acp_connection and chat.acp_connection.adapter and chat.acp_connection.adapter.name then
+        return chat.acp_connection.adapter.name
+    end
+    -- http adapters
+    if chat.adapter and chat.adapter.name then
+        return chat.adapter.name
+    end
+
+    return "unknown"
+end
+
 ---Get the current model from the chat.
 ---@param chat table
 ---@return string
@@ -302,7 +320,7 @@ function Storage:save_chat(chat)
         title = chat.opts.title,
         messages = chat.messages or {},
         settings = chat.settings or {},
-        adapter = chat.adapter and chat.adapter.name or "unknown",
+        adapter = get_adapter(chat),
         model = get_model(chat),
         updated_at = os.time(),
         context_items = chat.context_items or {},
