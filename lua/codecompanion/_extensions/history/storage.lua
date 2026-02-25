@@ -212,30 +212,6 @@ function Storage:load_chat(id)
     return result.data --[[@as CodeCompanion.History.ChatData]]
 end
 
----Get the current adapter name from the chat.
----For ACP adapters, the connection's adapter is the most reliable source
----since it reflects the actual adapter used after switching providers.
----@param chat table
----@return string
-local function get_adapter(chat)
-    log:trace(
-        "get_adapter: chat.adapter.name=%s, has_acp_connection=%s, connection_adapter_name=%s",
-        chat.adapter and chat.adapter.name or "nil",
-        chat.acp_connection and "yes" or "no",
-        chat.acp_connection and chat.acp_connection.adapter and chat.acp_connection.adapter.name or "nil"
-    )
-    -- acp adapters
-    if chat.acp_connection and chat.acp_connection.adapter and chat.acp_connection.adapter.name then
-        return chat.acp_connection.adapter.name
-    end
-    -- http adapters
-    if chat.adapter and chat.adapter.name then
-        return chat.adapter.name
-    end
-
-    return "unknown"
-end
-
 ---Get the current model from the chat.
 ---@param chat table
 ---@return string
@@ -326,7 +302,7 @@ function Storage:save_chat(chat)
         title = chat.opts.title,
         messages = chat.messages or {},
         settings = chat.settings or {},
-        adapter = get_adapter(chat),
+        adapter = chat.adapter and chat.adapter.name or "unknown",
         model = get_model(chat),
         updated_at = os.time(),
         context_items = chat.context_items or {},
@@ -336,12 +312,7 @@ function Storage:save_chat(chat)
         title_refresh_count = chat.opts.title_refresh_count or 0,
         cwd = cwd,
         project_root = utils.find_project_root(cwd),
-        acp_session_id = chat.acp_connection and chat.acp_connection.session_id or nil,
     }
-
-    if chat_data.acp_session_id then
-        log:trace("Captured ACP session_id: %s", chat_data.acp_session_id)
-    end
 
     -- Save chat to file
     local save_result = self:_save_chat_to_file(utils.remove_functions(chat_data))
