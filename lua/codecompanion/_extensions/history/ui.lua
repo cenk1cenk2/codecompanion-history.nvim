@@ -608,64 +608,59 @@ function UI:create_chat(chat_data)
         chat.tool_registry.in_use = chat_data.in_use or {}
         chat.cycle = chat_data.cycle or 1
         chat.opts.title_refresh_count = chat_data.title_refresh_count or 0
-        -- Restore ACP session connection before the scheduled ensure_connection runs.
-        -- Chat.new() schedules ensure_connection via vim.schedule for ACP adapters,
-        -- which checks `if not self.chat.acp_connection` before creating a new one.
-        -- By setting up the connection here with the saved session_id, the scheduled
-        -- call becomes a no-op and the existing session is restored.
+
         if chat_data.acp_session_id then
             log:trace("Restoring ACP session: %s", chat_data.acp_session_id)
-            local acp_ok, ACP = pcall(require, "codecompanion.acp")
-            if acp_ok then
-                chat.acp_connection = ACP.new({
-                    adapter = chat.adapter,
-                    session_id = chat_data.acp_session_id,
-                })
+            local ACP = require("codecompanion.acp")
+            chat.acp_connection = ACP.new({
+                adapter = chat.adapter,
+                session_id = chat_data.acp_session_id,
+            })
 
-                local connected = chat.acp_connection:connect_and_initialize()
-                if connected and chat.acp_connection.session_id then
-                    local cmd_ok, acp_commands = pcall(require, "codecompanion.interactions.chat.acp.commands")
-                    if cmd_ok then
-                        acp_commands.link_buffer_to_session(chat.bufnr, chat.acp_connection.session_id)
-                    end
-                    chat:update_metadata()
-                else
-                    log:warn("Failed to restore ACP session, a new session will be created")
-                    chat.acp_connection = nil
-                end
+            local connected = chat.acp_connection:connect_and_initialize()
+            if connected and chat.acp_connection.session_id then
+                require("codecompanion.interactions.chat.acp.commands").link_buffer_to_session(
+                    chat.bufnr,
+                    chat.acp_connection.session_id
+                )
+                chat:update_metadata()
+            else
+                log:warn("Failed to restore ACP session, a new session will be created")
+                chat.acp_connection = nil
             end
         end
 
-        -- Restore ACP model after ensuring the connection is fully established.
-        -- connect_and_initialize() is idempotent — returns immediately if already connected.
-        local saved_model = chat_data.model
-        if saved_model and saved_model ~= "unknown" and chat.adapter and chat.adapter.type == "acp" then
-            vim.schedule(function()
-                if not chat.acp_connection then
+        if chat_data.model and chat_data.model ~= "unknown" and chat.adapter and chat.adapter.type == "acp" then
+            local retries = 0
+            local function try_restore_model()
+                if not chat.acp_connection or not chat.acp_connection:is_connected() then
+                    retries = retries + 1
+                    if retries < 50 then
+                        vim.defer_fn(try_restore_model, 100)
+                    end
+
                     return
                 end
-                if not chat.acp_connection:connect_and_initialize() then
-                    return
-                end
-                if chat.acp_connection._models and chat.acp_connection._models.currentModelId == saved_model then
+                if chat.acp_connection._models and chat.acp_connection._models.currentModelId == chat_data.model then
                     return
                 end
 
-                if chat.acp_connection.set_model and chat.acp_connection:set_model(saved_model) then
-                    log:trace("Restored ACP model: %s", saved_model)
+                if chat.acp_connection:set_model(chat_data.model) then
+                    log:trace("Restored ACP model: %s", chat_data.model)
                     chat:update_metadata()
                 else
-                    log:warn("Model '%s' is not available, using default model", saved_model)
+                    log:warn("Model '%s' is not available, using default model", chat_data.model)
                     vim.notify(
                         string.format(
                             "Model '%s' is not available in '%s' adapter, using default model.",
-                            saved_model,
+                            chat_data.model,
                             chat_data.adapter
                         ),
                         vim.log.levels.WARN
                     )
                 end
-            end)
+            end
+            vim.defer_fn(try_restore_model, 100)
         end
 
         log:trace("Successfully created chat with save_id: %s", save_id or "N/A")
