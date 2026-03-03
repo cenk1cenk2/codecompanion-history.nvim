@@ -636,17 +636,18 @@ function UI:create_chat(chat_data)
             end
         end
 
-        -- Restore saved model for ACP adapters.
-        -- If session was restored above, connection already exists. Otherwise,
-        -- Chat.new() schedules create_acp_connection via vim.schedule (FIFO).
+        -- Restore ACP model after ensuring the connection is fully established.
+        -- connect_and_initialize() is idempotent — returns immediately if already connected.
         local saved_model = chat_data.model
         if saved_model and saved_model ~= "unknown" and chat.adapter and chat.adapter.type == "acp" then
-            local function restore_acp_model()
+            vim.schedule(function()
                 if not chat.acp_connection then
                     return
                 end
-                local current = chat.acp_connection._models and chat.acp_connection._models.currentModelId
-                if current == saved_model then
+                if not chat.acp_connection:connect_and_initialize() then
+                    return
+                end
+                if chat.acp_connection._models and chat.acp_connection._models.currentModelId == saved_model then
                     return
                 end
 
@@ -664,15 +665,7 @@ function UI:create_chat(chat_data)
                         vim.log.levels.WARN
                     )
                 end
-            end
-
-            if chat.acp_connection then
-                -- Connection already established (session restore above), restore model now
-                restore_acp_model()
-            else
-                -- Connection will be created by the scheduled ensure_connection, restore after
-                vim.schedule(restore_acp_model)
-            end
+            end)
         end
 
         log:trace("Successfully created chat with save_id: %s", save_id or "N/A")
